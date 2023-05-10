@@ -1,0 +1,91 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2019-2023 Arnaud Patard <apatard@hupstream.com>
+
+set -euo pipefail
+
+DEFAULT_KEYRING='@s'
+DEFAULT_TIMEOUT=10
+
+get_key()
+{
+	if [ -f /proc/keys ] && [ -x /usr/bin/keyctl ]; then
+		keyid="$1"
+		/usr/bin/keyctl reap 2>/dev/null 1>/dev/null || /bin/true
+		for k in $(/usr/bin/keyctl rlist "$DEFAULT_KEYRING"); do
+			desc=$(/usr/bin/keyctl rdescribe "$k"|cut -d';' -f5)
+			if [ "$desc" == "$keyid" ]; then
+				echo "$k"
+				break
+			fi
+		done
+	fi
+}
+
+put_key()
+{
+	if [ -f /proc/keys ] && [ -x /usr/bin/keyctl ]; then
+		keyid="$1"
+		passid="$2"
+
+		keynum=$(/usr/bin/pass show "$passid" | /usr/bin/keyctl padd user "$keyid" "$DEFAULT_KEYRING")
+		echo "$keynum"
+	fi
+}
+
+print_key()
+{
+	if [ -f /proc/keys ] && [ -x /usr/bin/keyctl ]; then
+		/usr/bin/keyctl pipe "$1"
+	else
+		/usr/bin/pass show "$2"
+	fi
+}
+
+set_timeout()
+{
+	if [ -f /proc/keys ] && [ -x /usr/bin/keyctl ]; then
+		/usr/bin/keyctl timeout "$1" "$DEFAULT_TIMEOUT"
+	fi
+}
+
+if ! TEMP=$(getopt -o '' --long vault-id: -- "$@" 2>/dev/null); then
+	echo "Failed to parse opts" >&2
+	exit 1
+fi
+
+eval set -- "$TEMP"
+passid=""
+while true; do
+	case "$1" in
+		--vault-id)
+			passid="$2"
+			shift 2
+			;;
+		--)	shift
+			break
+			;;
+		*)
+			shift
+			;;
+	esac
+done
+
+if [ ! -x /usr/bin/pass ]; then
+	echo "Pass is missing" >&2
+	exit 1
+fi
+
+if [ "$passid" == "" ]; then
+	echo "vault-id argument not set" >&2
+	exit 1
+fi
+
+keyid="ansible_vault_$passid"
+keynum=$(get_key "$keyid")
+if [ "$keynum" == "" ]; then
+	keynum=$(put_key "$keyid" "$passid")
+fi
+
+set_timeout "$keynum"
+print_key "$keynum" "$passid"

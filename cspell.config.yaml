@@ -1,0 +1,13 @@
+---
+dictionaryDefinitions:
+- name: words
+  path: .cspell/dictionary.txt
+  addWords: true
+dictionaries:
+  - en_US
+  - bash
+  - words
+ignorePaths:
+- cspell.config.yaml
+- passvault-client
+- .pre-commit-config.yaml
